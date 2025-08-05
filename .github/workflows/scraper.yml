@@ -1,0 +1,98 @@
+name: USD-COP Web Scraper
+
+on:
+  schedule:
+    # Ejecutar todos los días a las 10:00 PM hora Colombia (3:00 AM UTC)
+    # Colombia está en UTC-5, por lo que 10:00 PM = 3:00 AM UTC del día siguiente
+    - cron: '0 3 * * *'
+  
+  # Permite ejecutar manualmente desde GitHub
+  workflow_dispatch:
+
+jobs:
+  scrape-usd-cop:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout código
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Configurar Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Instalar dependencias Python
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 🌐 Configurar Chrome para Selenium
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+    
+    - name: 📊 Ejecutar scraper USD-COP
+      run: |
+        echo "🚀 Iniciando scraper a las $(date '+%Y-%m-%d %H:%M:%S UTC')"
+        echo "🇨🇴 Hora Colombia aproximada: $(TZ='America/Bogota' date '+%Y-%m-%d %H:%M:%S')"
+        python usd_cop_scraper.py
+      
+    - name: 📁 Verificar archivos generados
+      run: |
+        echo "📋 Archivos generados:"
+        ls -la *.xlsx *.csv *.json 2>/dev/null || echo "⚠️  No se encontraron archivos"
+        
+        if [ -f "forecast_usd.xlsx" ]; then
+          echo "✅ Excel file created: forecast_usd.xlsx"
+          ls -lh forecast_usd.xlsx
+        fi
+        
+        if [ -f "forecast_usd.csv" ]; then
+          echo "✅ CSV file created: forecast_usd.csv"
+          head -5 forecast_usd.csv
+        fi
+    
+    - name: 📤 Subir archivos como artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: usd-cop-forecast-${{ github.run_number }}
+        path: |
+          forecast_usd.xlsx
+          forecast_usd.csv
+          forecast_usd_*.json
+        retention-days: 30
+    
+    - name: 📧 Notificar resultados (opcional)
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ Scraping completado exitosamente"
+          echo "📊 Datos de USD-COP actualizados"
+          echo "📅 Fecha: $(TZ='America/Bogota' date '+%Y-%m-%d %H:%M:%S Colombia')"
+        else
+          echo "❌ Scraping falló"
+          echo "🔧 Revisar logs para más detalles"
+        fi
+
+  # Job adicional para mostrar información del sistema (debugging)
+  system-info:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # Solo cuando se ejecuta manualmente
+    
+    steps:
+    - name: 🖥️ Información del sistema
+      run: |
+        echo "🐧 Sistema operativo:"
+        lsb_release -a
+        echo ""
+        echo "🌐 Zona horaria:"
+        timedatectl
+        echo ""
+        echo "🕐 Hora actual:"
+        echo "UTC: $(date -u)"
+        echo "Colombia: $(TZ='America/Bogota' date)"
+        echo ""
+        echo "🌍 Conectividad:"
+        curl -I https://30rates.com/usd-cop || echo "❌ No se puede conectar al sitio"
